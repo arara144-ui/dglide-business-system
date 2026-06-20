@@ -2193,8 +2193,8 @@ function simCalc(){
   if(!sets||!perSet||!costCny||!d||!w||!h||!wkg){simClear();return;}
 
   const totalQty=sets*perSet;
-  const c1=cbm1(d,w,h);
-  const totalCbm=c1*totalQty;
+  const c1=cbm1(d,w,h); // 1セット分のCBM（入力寸法は1セット分）
+  const totalCbm=c1*sets; // 発注セット数分の総CBM
   const totalKg=wkg*totalQty;
   const costJpy1=costCny*fx;
 
