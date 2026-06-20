@@ -399,13 +399,23 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:16px 0}
           <div class="form-row"><label>1セットの重量（kg）</label><input type="number" id="sim-weight" min="0.1" step="0.1" placeholder="9.1" oninput="simCalc()"></div>
           <div class="form-row"><label>為替レート（円/元）</label><input type="number" id="sim-fx" value="23.65" min="1" step="0.1" oninput="simCalc()"></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div class="form-row">
+          <label>Amazonカテゴリー <span style="color:var(--muted);font-weight:400">→ 手数料率自動セット</span></label>
+          <select id="sim-amz-cat" onchange="simSetAmzFee()"></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div class="form-row"><label>Amazon手数料率（%）</label>
-            <input type="number" id="sim-amz-fee" value="16.5" min="0" max="30" step="0.5" oninput="simCalc()"></div>
+            <input type="number" id="sim-amz-fee" value="15.4" min="0" max="50" step="0.1" oninput="simCalc()"></div>
           <div class="form-row"><label>消費税率（%）</label>
             <input type="number" id="sim-tax-rate" value="10" min="0" max="30" step="1" oninput="simCalc()"></div>
-          <div class="form-row"><label>関税率（%）</label>
-            <input type="number" id="sim-customs-rate" value="10" min="0" max="30" step="1" oninput="simCalc()"></div>
+        </div>
+        <div class="form-row">
+          <label>関税区分（HSコード）<span style="color:var(--muted);font-weight:400">→ 税率自動セット</span></label>
+          <select id="sim-customs-cat" onchange="simSetCustomsRate()"></select>
+        </div>
+        <div class="form-row">
+          <label>関税率（%）</label>
+          <input type="number" id="sim-customs-rate" value="4.8" min="0" max="50" step="0.1" oninput="simCalc()">
         </div>
       </div>
 
@@ -2111,30 +2121,132 @@ function dlCsv(rows,filename){
 // ══════════════════════════════════════════
 
 // ── 天瞳 料金マスタ ──
+// ── 天瞳株式会社 料金マスタ（2026年1月より）──
 const TENME = {
-  sea: [{max:2,price:33000},{max:20,price:17325},{max:Infinity,price:13125}],
-  seaFlat: 15000,
-  air: [{max:10,price:1500},{max:20,price:800},{max:Infinity,price:500}],
-  storage:88, storageLong:176, storageLongDays:120,
+  // 海上便：CBM段階単価（切り上げ）
+  sea: [
+    {max:2,   price:33000},   // 0〜2㎥
+    {max:20,  price:17325},   // 2〜20㎥
+    {max:Infinity, price:13125}, // 20㎥超
+  ],
+  seaFlat: 15000,             // 海上便一律（円/㎥）
+  // 航空便：kg段階単価
+  air: [
+    {max:10,  price:1500},
+    {max:20,  price:800},
+    {max:Infinity, price:500},
+  ],
+  storage: 88,                // 保管料（円/CBM/日）〜120日
+  storageLong: 176,           // 保管料（円/CBM/日）120日超
+  storageLongDays: 120,
 };
+
+// ── 佐川急便 国内送料（三辺合計cm × 重量kg）──
 const SAGAWA = [
-  {size:60,weight:2,price:690},{size:80,weight:5,price:740},
-  {size:100,weight:10,price:920},{size:140,weight:20,price:1150},
-  {size:160,weight:30,price:1400},{size:170,weight:50,price:2000},
-  {size:180,weight:50,price:2500},{size:200,weight:50,price:3200},
-  {size:220,weight:50,price:3800},{size:240,weight:50,price:5050},
-  {size:260,weight:50,price:6500},
+  {size:60, weight:2,  price:690},
+  {size:80, weight:5,  price:740},
+  {size:100,weight:10, price:920},
+  {size:140,weight:20, price:1150},
+  {size:160,weight:30, price:1400},
+  {size:170,weight:50, price:2000},
+  {size:180,weight:50, price:2500},
+  {size:200,weight:50, price:3200},
+  {size:220,weight:50, price:3800},
+  {size:240,weight:50, price:5050},
+  {size:260,weight:50, price:6500},
 ];
+
+// ── 西濃運輸 国内送料（重量kg）──
 const SEINO = [
-  {weight:5,price:2800},{weight:10,price:3400},{weight:20,price:4000},
+  {weight:5, price:2800},{weight:10,price:3400},{weight:20,price:4000},
   {weight:30,price:4650},{weight:40,price:5580},{weight:50,price:6500},
   {weight:60,price:10000},
 ];
+
+// ── Amazon販売手数料（カテゴリー別・税込率）──
+const AMZ_FEE_CATS = [
+  {label:'ホーム&キッチン',           rate:15.4},
+  {label:'ガーデニング',              rate:15.4},
+  {label:'DIY・工具',                 rate:15.4},
+  {label:'産業・研究開発用品',        rate:15.4},
+  {label:'スポーツ&アウトドア',       rate:10.4},
+  {label:'ペット用品',               rate:15.4},
+  {label:'おもちゃ&ホビー',          rate:10.4},
+  {label:'家電&カメラ',              rate:8.4},
+  {label:'コンピュータ・周辺機器',   rate:8.4},
+  {label:'大型家電・生活家電',       rate:8.4},
+  {label:'家具・インテリア',         rate:15.4},
+  {label:'ベビー&マタニティ',        rate:15.4},
+  {label:'ビューティ・ヘルス',       rate:10.4},
+  {label:'服&ファッション小物',      rate:8.4},
+  {label:'シューズ&バッグ',          rate:12.4},
+  {label:'時計',                     rate:15.4},
+  {label:'文房具・オフィス用品',     rate:15.4},
+  {label:'食品・飲料',               rate:10.4},
+  {label:'本・CD・DVD',              rate:15.4},
+  {label:'その他（デフォルト）',     rate:15.4},
+];
+
+// ── 関税率（HSコード区分別・中国からのWTO税率）──
+const CUSTOMS_RATE_CATS = [
+  {label:'平台車・台車 HS8716.80 →',    rate:4.8,  note:'WTO協定税率'},
+  {label:'プラスチック製品 HS3926.90 →',rate:3.9,  note:'WTO協定税率'},
+  {label:'鉄鋼製品 HS7326.90 →',        rate:3.9,  note:'WTO協定税率'},
+  {label:'木製家具 HS9403.60 →',         rate:0,    note:'無税'},
+  {label:'ガラス製品 HS7020.00 →',       rate:3.0,  note:'WTO協定税率'},
+  {label:'繊維製品 HS63章 →',            rate:9.1,  note:'WTO協定税率'},
+  {label:'無税品目（0%）',              rate:0,    note:'無税'},
+  {label:'手動入力',                    rate:null, note:''},
+];
+
+// ── 商品プリセット（1セット梱包サイズ基準）──
 const SIM_PRESETS = {
-  dolly:  {name:'平台車／ドーリー',d:40, w:60, h:11.5,weight:2.7,costCny:46, price:24800,perSet:10},
-  cage:   {name:'爬虫類ケージ',   d:60, w:40, h:35,  weight:5.0, costCny:80, price:18000,perSet:1},
-  garden: {name:'菜園ベッド',     d:120,w:60, h:30,  weight:8.0, costCny:120,price:12800,perSet:1},
+  dolly: {
+    name:'平台車／ドーリー', d:63,w:43,h:14, weight:2.3,
+    costCny:46, price:24800, perSet:1, fx:23.65,
+    amzCat:2,   // DIY・工具
+    customsCat:0, // HS8716.80 4.8%
+  },
+  cage: {
+    name:'爬虫類ケージ', d:60,w:40,h:35, weight:5.0,
+    costCny:80, price:18000, perSet:1, fx:23.65,
+    amzCat:5,   // ペット用品
+    customsCat:1, // HS3926.90 3.9%
+  },
+  garden: {
+    name:'菜園ベッド', d:120,w:60,h:30, weight:8.0,
+    costCny:120,price:12800, perSet:1, fx:23.65,
+    amzCat:1,   // ガーデニング
+    customsCat:2, // HS7326.90 3.9%
+  },
 };
+
+// カテゴリーselectを初期化
+function simInitCats(){
+  const amzSel=document.getElementById('sim-amz-cat');
+  amzSel.innerHTML=AMZ_FEE_CATS.map((c,i)=>
+    `<option value="${i}">${c.label}（${c.rate}%）</option>`).join('');
+  amzSel.value=19; // その他デフォルト
+
+  const cstSel=document.getElementById('sim-customs-cat');
+  cstSel.innerHTML=CUSTOMS_RATE_CATS.map((c,i)=>
+    `<option value="${i}">${c.label} ${c.rate!=null?c.rate+'%':''} ${c.note}</option>`).join('');
+  cstSel.value=0; // 平台車デフォルト
+}
+simInitCats();
+
+function simSetAmzFee(){
+  const i=+document.getElementById('sim-amz-cat').value;
+  const r=AMZ_FEE_CATS[i].rate;
+  document.getElementById('sim-amz-fee').value=r;
+  simCalc();
+}
+function simSetCustomsRate(){
+  const i=+document.getElementById('sim-customs-cat').value;
+  const r=CUSTOMS_RATE_CATS[i].rate;
+  if(r!=null) document.getElementById('sim-customs-rate').value=r;
+  simCalc();
+}
 
 function simLoadPreset(){
   const k=document.getElementById('sim-preset').value; if(!k) return;
@@ -2147,7 +2259,19 @@ function simLoadPreset(){
   document.getElementById('sim-cost-cny').value=p.costCny;
   document.getElementById('sim-price').value=p.price;
   document.getElementById('sim-per-set').value=p.perSet;
+  document.getElementById('sim-fx').value=p.fx||23.65;
   if(!document.getElementById('sim-sets').value) document.getElementById('sim-sets').value=10;
+  // Amazon手数料カテゴリー
+  if(p.amzCat!=null){
+    document.getElementById('sim-amz-cat').value=p.amzCat;
+    document.getElementById('sim-amz-fee').value=AMZ_FEE_CATS[p.amzCat].rate;
+  }
+  // 関税カテゴリー
+  if(p.customsCat!=null){
+    document.getElementById('sim-customs-cat').value=p.customsCat;
+    const r=CUSTOMS_RATE_CATS[p.customsCat].rate;
+    if(r!=null) document.getElementById('sim-customs-rate').value=r;
+  }
   simCalc();
 }
 document.getElementById('sim-delivery').addEventListener('change',function(){
@@ -2210,9 +2334,10 @@ function simCalc(){
   const costJpy1  = costCny*fx;          // 1個仕入原価（円）
   const costJpySet= costJpy1*perSet;     // 1セット仕入原価（円）
 
-  // 消費税・関税（仕入原価ベース）
-  const taxPerSet     = costJpySet*taxRate;
+  // 関税 = 仕入原価（円）× 関税率
   const customsPerSet = costJpySet*customsRate;
+  // 消費税 = (仕入原価＋関税) × 10%（輸入消費税の正しい課税標準）
+  const taxPerSet     = (costJpySet+customsPerSet)*taxRate;
 
   // 海外送料（総CBMで計算 → 1セット分に按分）
   let sf={cost:0,label:'—'};
@@ -2314,7 +2439,9 @@ function simCalc(){
     const spSet=s>0?sc2/s:0;                        // 海外送料/セット
     const stC2=stDays>0?storageCalc(c1,s,stDays):0;
     const stSet=s>0?stC2/s:0;
-    const cps2=costJpySet+costJpySet*taxRate+costJpySet*customsRate+dom1+amzFee+spSet+stSet;
+    const cust2=costJpySet*customsRate;
+    const tax2=(costJpySet+cust2)*taxRate;
+    const cps2=costJpySet+cust2+tax2+dom1+amzFee+spSet+stSet;
     const pps2=price-cps2;
     const mr2=price>0?pps2/price*100:0;
     const isActive=s===sets;
