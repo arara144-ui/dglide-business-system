@@ -2409,13 +2409,14 @@ function rssCalcObj(s){
   const costJpy = costCny*rate*perSet;
   const sales   = price*perSet;
   const fee     = sales*feeRate;
+  // 入力寸法は1セット分のため、totalCbm = c1（perSet倍しない）
   const c1      = d&&w&&h ? Math.ceil((d/100)*(w/100)*(h/100)*10000)/10000 : 0;
-  const totalCbm= c1*perSet;
+  const totalCbm= c1; // 1セット分のCBM
 
   // 天瞳海外運送（CBM段階単価 × totalCbm）
   const seaUnit = totalCbm<=2?33000:totalCbm<=20?17325:13125;
   const seaFrt  = totalCbm>0 ? Math.ceil(totalCbm)*seaUnit : 0;
-  const seaPerSet = seaFrt; // 1発注セット分
+  const seaPerSet = seaFrt; // 1セット分
 
   const domFrt  = domestic*perSet;
   const profit  = sales - costJpy - fee - seaPerSet - domFrt;
