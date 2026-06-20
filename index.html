@@ -389,18 +389,23 @@ hr.sep{border:none;border-top:1px solid var(--border);margin:16px 0}
           </select>
         </div>
         <div class="form-row"><label>商品名</label><input type="text" id="sim-name" placeholder="商品名"></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px">📐 梱包サイズ（<b>1セット全体</b>の箱サイズを入力）</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          <div class="form-row"><label>縦（cm）</label><input type="number" id="sim-d" min="1" placeholder="40" oninput="simCalc()"></div>
-          <div class="form-row"><label>横（cm）</label><input type="number" id="sim-w" min="1" placeholder="60" oninput="simCalc()"></div>
-          <div class="form-row"><label>高（cm）</label><input type="number" id="sim-h" min="1" placeholder="11.5" oninput="simCalc()"></div>
+          <div class="form-row"><label>縦（cm）</label><input type="number" id="sim-d" min="1" placeholder="61" oninput="simCalc()"></div>
+          <div class="form-row"><label>横（cm）</label><input type="number" id="sim-w" min="1" placeholder="45" oninput="simCalc()"></div>
+          <div class="form-row"><label>高（cm）</label><input type="number" id="sim-h" min="1" placeholder="30" oninput="simCalc()"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div class="form-row"><label>1個の重量（kg）</label><input type="number" id="sim-weight" min="0.1" step="0.1" placeholder="2.7" oninput="simCalc()"></div>
-          <div class="form-row"><label>為替レート（円/元）</label><input type="number" id="sim-fx" value="21" min="1" step="0.1" oninput="simCalc()"></div>
+          <div class="form-row"><label>1セットの重量（kg）</label><input type="number" id="sim-weight" min="0.1" step="0.1" placeholder="9.1" oninput="simCalc()"></div>
+          <div class="form-row"><label>為替レート（円/元）</label><input type="number" id="sim-fx" value="23.65" min="1" step="0.1" oninput="simCalc()"></div>
         </div>
-        <div class="form-row" style="margin-bottom:0">
-          <label>Amazon手数料率（%）</label>
-          <input type="number" id="sim-amz-fee" value="10" min="0" max="30" step="0.5" oninput="simCalc()">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <div class="form-row"><label>Amazon手数料率（%）</label>
+            <input type="number" id="sim-amz-fee" value="16.5" min="0" max="30" step="0.5" oninput="simCalc()"></div>
+          <div class="form-row"><label>消費税率（%）</label>
+            <input type="number" id="sim-tax-rate" value="10" min="0" max="30" step="1" oninput="simCalc()"></div>
+          <div class="form-row"><label>関税率（%）</label>
+            <input type="number" id="sim-customs-rate" value="10" min="0" max="30" step="1" oninput="simCalc()"></div>
         </div>
       </div>
 
@@ -2192,62 +2197,73 @@ function simCalc(){
 
   if(!sets||!perSet||!costCny||!d||!w||!h||!wkg){simClear();return;}
 
+  const taxRate     = (+document.getElementById('sim-tax-rate').value||10)/100;
+  const customsRate = (+document.getElementById('sim-customs-rate').value||10)/100;
+
   const totalQty  = sets*perSet;
-  const c1        = cbm1(d,w,h);          // 1個のCBM
-  const c1set     = c1*perSet;            // 1セットのCBM
-  const totalCbm  = c1set*sets;           // 総CBM（全発注分）
-  const wkgSet    = wkg*perSet;           // 1セットの重量
-  const totalKg   = wkgSet*sets;          // 総重量
-  const triSet    = d+w+h*perSet;         // 1セット3辺合計（高さ方向に積み上げ想定）
-  const costJpy1  = costCny*fx;           // 1個の仕入原価（円）
+  // 入力サイズ＝1セット全体の梱包サイズ → c1が1セットCBM
+  const c1        = cbm1(d,w,h);           // 1セットCBM
+  const c1per1    = c1/perSet;             // 1個CBM
+  const totalCbm  = c1*sets;              // 総CBM（全発注分）
+  const triSet    = d+w+h;               // 1セット3辺合計
+  const totalKg   = wkg*sets;            // 総重量（wkgは1セット重量）
+  const costJpy1  = costCny*fx;          // 1個仕入原価（円）
+  const costJpySet= costJpy1*perSet;     // 1セット仕入原価（円）
 
-  // 海外送料（総CBMで計算）
+  // 消費税・関税（仕入原価ベース）
+  const taxPerSet     = costJpySet*taxRate;
+  const customsPerSet = costJpySet*customsRate;
+
+  // 海外送料（総CBMで計算 → 1セット分に按分）
   let sf={cost:0,label:'—'};
-  if(shipMode==='sea')          sf=seaFreight(totalCbm);
+  if(shipMode==='sea')           sf=seaFreight(totalCbm);
   else if(shipMode==='sea-flat'){const cu=Math.ceil(totalCbm);sf={cost:cu*TENME.seaFlat,cu,label:`${cu}㎥ × ${TENME.seaFlat.toLocaleString()}円/㎥`};}
-  else                          sf=airFreight(totalKg);
-  const shipPerSet = sf.cost/sets;        // 1セットあたりの海外送料
+  else                           sf=airFreight(totalKg);
+  const shipPerSet = sets>0?sf.cost/sets:0;   // 1セットあたり海外送料
 
-  // 保管料（1セットCBM × セット数で算出）
-  const stCost    = stDays>0?storageCalc(c1set,sets,stDays):0;
-  const stPerSet  = stCost/sets;
+  // 保管料（1セットCBM × セット数）
+  const stCost   = stDays>0?storageCalc(c1,sets,stDays):0;
+  const stPerSet = sets>0?stCost/sets:0;
 
-  // 国内送料（1セット分サイズ・重量で計算）
+  // 国内送料（1セット分サイズ・重量）
   let dom1=0, domLabel='';
-  if(delMode==='sagawa'){dom1=sagawaPrice(d,w,h*perSet,wkgSet);domLabel=`佐川 三辺${triSet}cm/${wkgSet}kg`;}
-  else if(delMode==='seino'){dom1=seinoPrice(wkgSet);domLabel=`西濃 ${wkgSet}kg`;}
+  if(delMode==='sagawa'){dom1=sagawaPrice(d,w,h,wkg);domLabel=`佐川 三辺${triSet}cm/${wkg}kg`;}
+  else if(delMode==='seino'){dom1=seinoPrice(wkg);domLabel=`西濃 ${wkg}kg`;}
   else{dom1=+document.getElementById('sim-delivery-custom').value||0;domLabel='手動';}
 
   // Amazon手数料（販売価格ベース）
-  const amzFee    = price*amzRate;
+  const amzFee = price*amzRate;
 
-  // 損益（1セット）
-  const costPerSet= costJpy1*perSet + shipPerSet + stPerSet + dom1 + amzFee;
+  // 損益（1セット） ＝ Excelの計算式通り
+  // 粗利 = 販売価格 - 原価 - 国内送料 - Amazon手数料 - 消費税 - 関税 - 国際運送
+  const costPerSet   = costJpySet + taxPerSet + customsPerSet + dom1 + amzFee + shipPerSet + stPerSet;
   const profitPerSet = price - costPerSet;
-  const margin    = price>0?profitPerSet/price*100:0;
-  const profitPer1= profitPerSet/perSet;
+  const margin       = price>0?profitPerSet/price*100:0;
+  const profitPer1   = profitPerSet/perSet;
 
   const totalSales  = price*sets;
   const totalProfit = profitPerSet*sets;
 
   // KPI
   const pc=profitPerSet>=0?'var(--green)':'var(--red)';
-  setEl('r-profit-per-set', yen(profitPerSet), pc);
-  setEl('r-margin-rate', `粗利率 ${margin.toFixed(1)}%`);
+  setEl('r-profit-per-set',  yen(profitPerSet), pc);
+  setEl('r-margin-rate',     `粗利率 ${margin.toFixed(1)}%`);
   setEl('r-profit-per-item', yen(profitPer1), pc);
-  setEl('r-cost-per-item', `コスト/個 ${yen(costPerSet/perSet)}`);
-  setEl('r-total-profit', yen(totalProfit), totalProfit>=0?'':'var(--red)');
-  setEl('r-total-sales', `売上合計 ${yen(totalSales)}`);
-  setEl('r-ship-per-item', yen(shipPerSet));
-  setEl('r-cbm-info', `1セットCBM ${c1set.toFixed(4)}㎥`);
+  setEl('r-cost-per-item',   `コスト/個 ${yen(costPerSet/perSet)}`);
+  setEl('r-total-profit',    yen(totalProfit), totalProfit>=0?'':'var(--red)');
+  setEl('r-total-sales',     `売上合計 ${yen(totalSales)}`);
+  setEl('r-ship-per-item',   yen(shipPerSet));
+  setEl('r-cbm-info',        `1セットCBM ${c1.toFixed(4)}㎥`);
 
-  // コスト内訳（1セット単位）
+  // コスト内訳（1セット単位・Excel計算式通り）
   const costRows=[
-    ['仕入原価',    yen(costJpy1*perSet), `${costCny}元×${fx}円×${perSet}個`],
-    ['海外運送費',  yen(shipPerSet),       `総${yen(sf.cost)}÷${sets}セット`],
-    ['天瞳保管料',  yen(stPerSet),         `${stDays}日`],
-    ['国内送料',    yen(dom1),             `1セット(${perSet}個)分`],
-    ['Amazon手数料',yen(amzFee),           `${(amzRate*100).toFixed(1)}%`],
+    ['仕入原価',    yen(costJpySet),    `${costCny}元×${fx}円×${perSet}個`],
+    ['消費税',      yen(taxPerSet),     `仕入原価×${(taxRate*100).toFixed(0)}%`],
+    ['関税',        yen(customsPerSet), `仕入原価×${(customsRate*100).toFixed(0)}%`],
+    ['国内送料',    yen(dom1),          `1セット(${perSet}個)分`],
+    ['Amazon手数料',yen(amzFee),        `${(amzRate*100).toFixed(1)}%`],
+    ['海外運送費',  yen(shipPerSet),    `総${yen(sf.cost)}÷${sets}セット`],
+    ['天瞳保管料',  yen(stPerSet),      `${stDays}日`],
     ['','',''],
     ['コスト計',    `<b>${yen(costPerSet)}</b>`, ''],
     ['販売価格',    `<b>${yen(price)}</b>`,      '1セット'],
@@ -2260,19 +2276,19 @@ function simCalc(){
 
   // 天瞳詳細（1セット単位で可視化）
   const tenRows=[
-    ['輸送方法',      shipMode==='sea'?'海上便（天瞳）':shipMode==='sea-flat'?'海上便一律':'航空便'],
-    ['計算根拠',      sf.label],
-    ['海外送料合計',  yen(sf.cost)],
-    ['海外送料/セット', yen(shipPerSet)],
+    ['輸送方法',       shipMode==='sea'?'海上便（天瞳）':shipMode==='sea-flat'?'海上便一律':'航空便'],
+    ['計算根拠',       sf.label],
+    ['海外送料合計',   yen(sf.cost)],
+    ['海外送料/セット',yen(shipPerSet)],
     ['',''],
-    ['1個CBM',        `${c1.toFixed(4)}㎥`],
-    ['1セットCBM',    `${c1set.toFixed(4)}㎥ (${perSet}個)`],
-    ['総CBM',         `${totalCbm.toFixed(3)}㎥ (${sets}セット)`],
-    ['1セット重量',   `${wkgSet}kg`],
-    ['1セット3辺合計',`${triSet}cm`],
-    ['保管料計',      yen(stCost)+(stDays>120?' ⚠120日超':'')],
+    ['1個CBM',         `${c1per1.toFixed(4)}㎥`],
+    ['1セットCBM',     `${c1.toFixed(4)}㎥ (梱包${d}×${w}×${h}cm)`],
+    ['総CBM',          `${totalCbm.toFixed(3)}㎥ (${sets}セット)`],
+    ['1セット重量',    `${wkg}kg`],
+    ['1セット3辺合計', `${triSet}cm`],
+    ['保管料計',       yen(stCost)+(stDays>120?' ⚠120日超':'')],
     ['',''],
-    ['国内送料/セット', `${domLabel} → ${yen(dom1)}`],
+    ['国内送料/セット',`${domLabel} → ${yen(dom1)}`],
   ];
   document.getElementById('sim-tenme-table').innerHTML=tenRows.map(([k,v])=>`<tr>
     <td style="padding:3px 0;color:var(--muted);font-size:12px;white-space:nowrap">${k}</td>
@@ -2287,26 +2303,27 @@ function simCalc(){
   if(margin>=30) notes.push('✓ 粗利率30%超：良好');
   document.getElementById('sim-notes').innerHTML=notes.map(n=>`<div>${n}</div>`).join('');
 
-  // シナリオ比較
+  // シナリオ比較（同じ計算式で統一）
   const scens=[1,2,5,10,20,50,100,200];
   document.getElementById('sim-scenario-tbody').innerHTML=scens.map(s=>{
-    const qty=s*perSet, cbmT=c1*qty, kgT=wkg*qty;
+    const cbmT=c1*s, kgT=wkg*s;
     let sc2=0;
     if(shipMode==='sea') sc2=seaFreight(cbmT).cost;
-    else if(shipMode==='sea-flat'){sc2=Math.ceil(cbmT)*TENME.seaFlat;}
+    else if(shipMode==='sea-flat') sc2=Math.ceil(cbmT)*TENME.seaFlat;
     else sc2=airFreight(kgT).cost;
-    const sp1=sc2/qty;
-    const stC2=stDays>0?storageCalc(c1,qty,stDays):0;
-    const cps2=(costJpy1+sp1+stC2/qty+dom1)*perSet+amzFee;
+    const spSet=s>0?sc2/s:0;                        // 海外送料/セット
+    const stC2=stDays>0?storageCalc(c1,s,stDays):0;
+    const stSet=s>0?stC2/s:0;
+    const cps2=costJpySet+costJpySet*taxRate+costJpySet*customsRate+dom1+amzFee+spSet+stSet;
     const pps2=price-cps2;
     const mr2=price>0?pps2/price*100:0;
     const isActive=s===sets;
     const pc2=pps2>=0?'color:var(--green)':'color:var(--red)';
     return `<tr style="${isActive?'background:rgba(79,142,247,.12);font-weight:600':''}">
       <td>${s}セット${isActive?' ◀':''}</td>
-      <td style="text-align:right">${qty.toLocaleString()}個</td>
+      <td style="text-align:right">${(s*perSet).toLocaleString()}個</td>
       <td style="text-align:right">${cbmT.toFixed(2)}㎥</td>
-      <td style="text-align:right">${yen(sp1)}</td>
+      <td style="text-align:right">${yen(spSet)}</td>
       <td style="text-align:right">${yen(dom1)}</td>
       <td style="text-align:right">${yen(cps2/perSet)}</td>
       <td style="text-align:right;${pc2}">${yen(pps2)}</td>
