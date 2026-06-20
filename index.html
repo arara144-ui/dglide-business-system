@@ -2322,8 +2322,8 @@ function simCalc(){
 
   if(!sets||!perSet||!costCny||!d||!w||!h||!wkg){simClear();return;}
 
-  const taxRate     = (+document.getElementById('sim-tax-rate').value||10)/100;
-  const customsRate = (+document.getElementById('sim-customs-rate').value||10)/100;
+  const taxRate     = parseFloat(document.getElementById('sim-tax-rate').value    ??10)/100;
+  const customsRate = parseFloat(document.getElementById('sim-customs-rate').value??0 )/100;
 
   const totalQty  = sets*perSet;
   // 入力サイズ＝1セット全体の梱包サイズ → c1が1セットCBM
