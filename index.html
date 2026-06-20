@@ -2187,16 +2187,17 @@ const AMZ_FEE_CATS = [
   {label:'その他（デフォルト）',     rate:15.4},
 ];
 
-// ── 関税率（HSコード区分別・中国からのWTO税率）──
+// ── 関税率（HSコード区分別・日本の基本税率）──
+// 出典: 日本関税率表（税関）/ 中国はWTO加盟→協定税率適用
 const CUSTOMS_RATE_CATS = [
-  {label:'平台車・台車 HS8716.80 →',    rate:4.8,  note:'WTO協定税率'},
-  {label:'プラスチック製品 HS3926.90 →',rate:3.9,  note:'WTO協定税率'},
-  {label:'鉄鋼製品 HS7326.90 →',        rate:3.9,  note:'WTO協定税率'},
-  {label:'木製家具 HS9403.60 →',         rate:0,    note:'無税'},
-  {label:'ガラス製品 HS7020.00 →',       rate:3.0,  note:'WTO協定税率'},
-  {label:'繊維製品 HS63章 →',            rate:9.1,  note:'WTO協定税率'},
-  {label:'無税品目（0%）',              rate:0,    note:'無税'},
-  {label:'手動入力',                    rate:null, note:''},
+  {label:'台車・手押し車 HS8716.80',      rate:0,    note:'基本税率0%（その他の車両）'},
+  {label:'プラスチック製品 HS3926.90',   rate:3.9,  note:'WTO協定税率'},
+  {label:'鉄鋼製品 HS7326.90',           rate:3.9,  note:'WTO協定税率'},
+  {label:'木製家具 HS9403.60',            rate:0,    note:'無税'},
+  {label:'ガラス製品 HS7020.00',          rate:3.0,  note:'WTO協定税率'},
+  {label:'繊維製品 HS63章',               rate:9.1,  note:'WTO協定税率'},
+  {label:'無税品目（0%）',               rate:0,    note:''},
+  {label:'手動入力',                     rate:null, note:''},
 ];
 
 // ── 商品プリセット（1セット梱包サイズ基準）──
@@ -2204,8 +2205,8 @@ const SIM_PRESETS = {
   dolly: {
     name:'平台車／ドーリー', d:63,w:43,h:14, weight:2.3,
     costCny:46, price:24800, perSet:1, fx:23.65,
-    amzCat:2,   // DIY・工具
-    customsCat:0, // HS8716.80 4.8%
+    amzCat:2,   // DIY・工具 15.4%
+    customsCat:0, // HS8716.80 基本税率0%
   },
   cage: {
     name:'爬虫類ケージ', d:60,w:40,h:35, weight:5.0,
@@ -2356,8 +2357,9 @@ function simCalc(){
   else if(delMode==='seino'){dom1=seinoPrice(wkg);domLabel=`西濃 ${wkg}kg`;}
   else{dom1=+document.getElementById('sim-delivery-custom').value||0;domLabel='手動';}
 
-  // Amazon手数料（販売価格ベース）
-  const amzFee = price*amzRate;
+  // Amazon手数料（税抜き表示率 × 1.1 = 税込実負担額）
+  // Amazon公式注記：「手数料はすべて税抜き表示。記載金額に加えて税金が課金される」
+  const amzFee = price*amzRate*1.1;
 
   // 損益（1セット） ＝ Excelの計算式通り
   // 粗利 = 販売価格 - 原価 - 国内送料 - Amazon手数料 - 消費税 - 関税 - 国際運送
@@ -2386,7 +2388,7 @@ function simCalc(){
     ['消費税',      yen(taxPerSet),     `仕入原価×${(taxRate*100).toFixed(0)}%`],
     ['関税',        yen(customsPerSet), `仕入原価×${(customsRate*100).toFixed(0)}%`],
     ['国内送料',    yen(dom1),          `1セット(${perSet}個)分`],
-    ['Amazon手数料',yen(amzFee),        `${(amzRate*100).toFixed(1)}%`],
+    ['Amazon手数料',yen(amzFee),        `${(amzRate*100).toFixed(1)}%（税抜）×1.1`],
     ['海外運送費',  yen(shipPerSet),    `総${yen(sf.cost)}÷${sets}セット`],
     ['天瞳保管料',  yen(stPerSet),      `${stDays}日`],
     ['','',''],
@@ -2441,7 +2443,8 @@ function simCalc(){
     const stSet=s>0?stC2/s:0;
     const cust2=costJpySet*customsRate;
     const tax2=(costJpySet+cust2)*taxRate;
-    const cps2=costJpySet+cust2+tax2+dom1+amzFee+spSet+stSet;
+    const amz2=price*amzRate*1.1;
+    const cps2=costJpySet+cust2+tax2+dom1+amz2+spSet+stSet;
     const pps2=price-cps2;
     const mr2=price>0?pps2/price*100:0;
     const isActive=s===sets;
